@@ -8,3 +8,5 @@
 8-Criar arquivo Router.tsx
 9- importa no arquivo app.tsx BrowserRouter e envolver toda a aplicação com ele
 10- criar layout para a aplicação
+11-npm i phosphor-react biblioteca de icons
+12-
