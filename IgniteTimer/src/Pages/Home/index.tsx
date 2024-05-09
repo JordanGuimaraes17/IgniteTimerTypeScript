@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Play } from 'phosphor-react'
+import { useEffect, useState } from 'react'
+import { HandPalm, Play } from 'phosphor-react'
 import{useForm} from 'react-hook-form'
 import {zodResolver} from '@hookform/resolvers/zod'
+import{differenceInSeconds} from 'date-fns'
 import * as zod from 'zod' /* fazemos a importação assim , porque a biblioteca não uma importação default, teria destrututar e pegar função individual, fazemos assim que pega todas as funções  dentro da  biblioteca zod */
 import {
   HomeContainer,
@@ -10,7 +11,8 @@ import {
   SeparatorContainer,
   StartCountdownButton, 
   TaskInput, 
-  MinutesAmountInput }
+  MinutesAmountInput, 
+  StopCountdownButton}
   from "./styles"
 
   /* aqui criamos o esquema o modelo de validação, colocamos zod.object porque o input retorna um objeto */
@@ -39,6 +41,8 @@ interface Cycle{
   id:string
   task:string
   minutesAmount:number
+  startDate: Date
+  interruptedDate?: Date
 }
 
 export function Home(){
@@ -62,7 +66,6 @@ export function Home(){
 
   /* aqui a variavel percorre o vetor de ciclos  e vai encontra(usa o find ),  um ciclo em que o id do ciclo seja igual ao id do ciclo ativo */
   const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId) 
-  console.log(activeCycle)
 
   /* ciclo pode estar ativo ou não, quando usuario aperta f5 não fica com nehum ciclo ativo então, se eu tiver um ciclo ativo 
   activeCycle.minutesAmount * 60      se não  0 */  
@@ -91,16 +94,51 @@ export function Home(){
       id,
       task: data.task,
       minutesAmount:data.minutesAmount,
+      startDate: new Date(),
     }
 
-    // aqui pegamos o estado atual da variavel Cycle com o parametro state usando arrow function e colocamos o novo newCycle
+    /* seria assim ->  setCycles([...cicles,newCycle]) ,  mas usamos a imutabilidade sempre que quermos adicionar uma nova informação  copiamos oque ja existe usando ... rest operator , e como estamos atualizando um estado que depende dele mesmo é legal sempre usar uma arraw function pra respeitar 
+    */
     setCycles((state)=>[...state,newCycle])
-
     // setando o ciclo recem criado, como sendo meu ciclo ativo, e pegamos o id gerado 
     setActiveCycleId(id)
-
+    SetAmountSecondsPassed(0) // depois que crio volta a zero os segundos passados
     reset();// funão do useForm que limpa depois do submit, mas se não tiver nada definido em defaultValues
   }
+
+  function handleInterruptCycle(){
+    setCycles(cycles.map((cycle) =>{
+      if (cycle.id === activeCycleId){ // aqui atera o ciclo que esta ativo
+        return{...cycle, interruptedDate:new Date()} // retorna cada um dos ciclos alterados
+      }else{
+        return cycle // ou não alterados
+      }
+    })
+    )
+    setActiveCycleId(null)// quando interrompido volta para zero
+  }
+
+
+
+
+  useEffect(()=>{
+    let interval : number
+    if(activeCycle){
+    interval = setInterval(()=>{
+        SetAmountSecondsPassed(differenceInSeconds(new Date(),activeCycle.startDate))
+      },1000)
+    }
+    return ()=>{
+      clearInterval(interval)
+    }
+  },[activeCycle])
+
+  useEffect(()=>{
+    if(activeCycle){
+      document.title = `${minutes}:${seconds}`
+    }
+  },[minutes, seconds ,activeCycle])
+
 
   return (
     <HomeContainer>
@@ -111,6 +149,7 @@ export function Home(){
           id="task"
           list="task-suggestion"
           placeholder="Dê um nome para o seu projeto"
+          disabled={!!activeCycle} // dois !! porque teria que ser boloeano true o false , ai converte se tiver algum valor pra true se não false
           {...register('task')} 
           />
 
@@ -128,6 +167,7 @@ export function Home(){
           step={5}
           min={5}
           max={60}
+          disabled={!!activeCycle}
           {...register('minutesAmount',{valueAsNumber:true})} /* passa um sengundo paramentro, porque esta indo com string mas queremos numero*/
           />
 
@@ -142,10 +182,18 @@ export function Home(){
           <span> {seconds[1]} </span>
         </CountdownContainer>
 
-        <StartCountdownButton  disabled={isSubmitDisabled } type="submit">
+        {activeCycle ? (
+          <StopCountdownButton onClick={handleInterruptCycle} type="button">
+          <HandPalm size={24}/>
+          Interronper 
+        </StopCountdownButton>
+
+        ):(
+          <StartCountdownButton  disabled={isSubmitDisabled } type="submit">
           <Play size={24}/>
           Começar
         </StartCountdownButton>
+        )}
         </form>
 
 
