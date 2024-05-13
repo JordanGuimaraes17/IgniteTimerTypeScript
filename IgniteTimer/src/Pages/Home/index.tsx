@@ -1,9 +1,8 @@
 import { HandPalm, Play } from 'phosphor-react'
-import { useForm } from 'react-hook-form'
-import { FormProvider } from 'react-hook-form'
+import { useForm,FormProvider } from 'react-hook-form'
 import {zodResolver} from '@hookform/resolvers/zod'
 import * as zod from 'zod' /* fazemos a importação assim , porque a biblioteca não uma importação default, teria destrututar e pegar função individual, fazemos assim que pega todas as funções  dentro da  biblioteca zod */
-import { createContext, useState } from 'react'
+import {  useContext} from 'react'
 import {
   HomeContainer,
   StartCountdownButton, 
@@ -11,25 +10,7 @@ import {
   from "./styles"
 import { NewCycleForm } from './Components/NewCycleForm'
 import { Countdown } from './Components/Countdown'
-
-interface Cycle{
-  id:string
-  task:string
-  minutesAmount:number
-  startDate: Date
-  interruptedDate?: Date
-  finishedDate?: Date
-}
-
-interface CyclesContextType {
-  activeCycle:Cycle | undefined // se não tenho um ciclo ativo é indefinido 
-  activeCycleId:string | null
-  amountSecondsPassed:number
-  markCurrentCycleAsFinished: () => void
-  setSecondsPassed:(seconds:number)=> void
-} 
-
-export const CyclesContext = createContext({} as CyclesContextType)
+import { CyclesContext } from '../../Context/CyclesContext'
 
 /* aqui criamos o esquema o modelo de validação, colocamos zod.object porque o input retorna um objeto */
 const newCycleFormValidationSchema = zod.object({
@@ -55,104 +36,40 @@ type NewCycleFormData = zod.infer< typeof newCycleFormValidationSchema>
 
 
 export function Home(){
-  // criamos um estado e usamos o generico do TS <Cycle[]> colocamos array pq a interface recebe uma lista com varios ciclos
-  const [cycles,setCycles] = useState<Cycle[]>([])
+   // Obtendo funções e dados do contexto de ciclos
+  const {activeCycle, createNewCycle, interruptCurrentCycle} = useContext(CyclesContext)
 
-    // vai armarzenar o tanto de segundos que se passaram desde que o ciclo foi criado ta ativo
-    const [amountSecondsPassed,SetAmountSecondsPassed]= useState(0)
+ // Inicializando o formulário usando o hook useForm
+const newCycleForm = useForm<NewCycleFormData>({
+  resolver: zodResolver(newCycleFormValidationSchema), // Definindo o resolver com zodResolver e passando o esquema de validação
+  defaultValues: {
+    task: '',
+    minutesAmount: 0,
+  },
+})
 
-  // estado que aplicação vai começar, null porque começa zerado 
-  const [activeCycleId, setActiveCycleId]= useState <string | null> (null)
+const { handleSubmit, watch, reset } = newCycleForm // Destructuring das funções do formulário
 
-  const newCycleForm = useForm <NewCycleFormData> ({
-    /* chamos o resolver usando o zodResolver e dentro dele colocamos o schemas */
-    resolver:zodResolver(newCycleFormValidationSchema),
-    defaultValues:{
-      task:'',
-      minutesAmount:0,
-    },
-  })
+// Função para lidar com a criação de um novo ciclo
+function handleCreateNewCycle(data: NewCycleFormData) {
+  createNewCycle(data) // Chamando a função para criar um novo ciclo com os dados do formulário
+  reset() // Resetando o formulário após a submissão
+}
 
-  const { handleSubmit, watch, reset} = newCycleForm
-
-  /* aqui a variavel percorre o vetor de ciclos  e vai encontra(usa o find ),  um ciclo em que o id do ciclo seja igual ao id do ciclo ativo */
-  const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId) 
-
-  const task = watch('task')
-  const isSubmitDisabled =!task
-
-  function setSecondsPassed(seconds:number){
-    SetAmountSecondsPassed(seconds)
-  }
-
-  function markCurrentCycleAsFinished(){
-    setCycles((state)=>
-      state.map((cycle)=> {
-        if(cycle.id===activeCycleId) {
-          return{...cycle,finishedDate:new Date()}
-        }else{
-          return cycle
-        }
-      }),
-    )
-    
-  }
-
-  function handleCreateNewCycle(data:NewCycleFormData){
-    /* na variavel passei Cycle que é a interface  deixando o TS  inteligente e mostrando as opcoes que tem para ver pressionar Ctrl mais espaço */
-
-     // para não ter id  repetido
-    const id = String(new Date().getTime())
-
-    const newCycle:Cycle = {
-      id,
-      task: data.task,
-      minutesAmount:data.minutesAmount,
-      startDate: new Date(),
-    }
-
-    /* seria assim ->  setCycles([...cicles,newCycle]) ,  mas usamos a imutabilidade sempre que quermos adicionar uma nova informação  copiamos oque ja existe usando ... rest operator , e como estamos atualizando um estado que depende dele mesmo é legal sempre usar uma arraw function pra respeitar 
-    */
-    setCycles((state)=>[...state,newCycle])
-    // setando o ciclo recem criado, como sendo meu ciclo ativo, e pegamos o id gerado 
-    setActiveCycleId(id)
-    SetAmountSecondsPassed(0) // depois que crio volta a zero os segundos passados
-    reset();// função do useForm que limpa depois do submit, mas se não tiver nada definido em defaultValues
-  }
-
-  function handleInterruptCycle(){
-    setCycles(state=> state.map((cycle) =>{
-      if (cycle.id === activeCycleId){ // aqui altera o ciclo que esta ativo
-        return{...cycle, interruptedDate:new Date()} // retorna cada um dos ciclos alterados
-      }else{
-        return cycle // ou não alterados
-      }
-    })
-    )
-    setActiveCycleId(null)// quando interrompido volta para zero
-  }
+const task = watch('task') // Obtendo o valor do campo 'task' do formulário
+const isSubmitDisabled = !task // Verificando se o botão de submissão deve estar desabilitado
 
 
   return (
     <HomeContainer>
-        <form   onSubmit={handleSubmit(handleCreateNewCycle)}  action="">
-          <CyclesContext.Provider value={{
-            activeCycle,
-            activeCycleId,
-            amountSecondsPassed,
-            markCurrentCycleAsFinished,
-            setSecondsPassed}}>
-            
+        <form   onSubmit={handleSubmit( handleCreateNewCycle)}  action="">
             <FormProvider {...newCycleForm} >
               <NewCycleForm/>
             </FormProvider>
-
           <Countdown/>
 
-          </CyclesContext.Provider>
-          
         {activeCycle ? (
-          <StopCountdownButton onClick={handleInterruptCycle} type="button">
+          <StopCountdownButton onClick={interruptCurrentCycle} type="button">
           <HandPalm size={24}/>
           Interronper 
         </StopCountdownButton>
@@ -164,7 +81,6 @@ export function Home(){
         </StartCountdownButton>
         )}
         </form>
-
 
     </HomeContainer>
     
