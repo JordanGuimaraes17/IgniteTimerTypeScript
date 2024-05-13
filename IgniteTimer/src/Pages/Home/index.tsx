@@ -1,21 +1,37 @@
-import { useEffect, useState } from 'react'
 import { HandPalm, Play } from 'phosphor-react'
-import{useForm} from 'react-hook-form'
+import { useForm } from 'react-hook-form'
+import { FormProvider } from 'react-hook-form'
 import {zodResolver} from '@hookform/resolvers/zod'
-import{differenceInSeconds} from 'date-fns'
 import * as zod from 'zod' /* fazemos a importação assim , porque a biblioteca não uma importação default, teria destrututar e pegar função individual, fazemos assim que pega todas as funções  dentro da  biblioteca zod */
+import { createContext, useState } from 'react'
 import {
   HomeContainer,
-  FormContainer, 
-  CountdownContainer, 
-  SeparatorContainer,
   StartCountdownButton, 
-  TaskInput, 
-  MinutesAmountInput, 
   StopCountdownButton}
   from "./styles"
+import { NewCycleForm } from './Components/NewCycleForm'
+import { Countdown } from './Components/Countdown'
 
-  /* aqui criamos o esquema o modelo de validação, colocamos zod.object porque o input retorna um objeto */
+interface Cycle{
+  id:string
+  task:string
+  minutesAmount:number
+  startDate: Date
+  interruptedDate?: Date
+  finishedDate?: Date
+}
+
+interface CyclesContextType {
+  activeCycle:Cycle | undefined // se não tenho um ciclo ativo é indefinido 
+  activeCycleId:string | null
+  amountSecondsPassed:number
+  markCurrentCycleAsFinished: () => void
+  setSecondsPassed:(seconds:number)=> void
+} 
+
+export const CyclesContext = createContext({} as CyclesContextType)
+
+/* aqui criamos o esquema o modelo de validação, colocamos zod.object porque o input retorna um objeto */
 const newCycleFormValidationSchema = zod.object({
   task:zod
   .string()
@@ -37,25 +53,18 @@ const newCycleFormValidationSchema = zod.object({
 // aqui criamos um tipo do TS  para criar o modelo atumatico em vez fe fazer a interface
 type NewCycleFormData = zod.infer< typeof newCycleFormValidationSchema>
 
-interface Cycle{
-  id:string
-  task:string
-  minutesAmount:number
-  startDate: Date
-  interruptedDate?: Date
-}
 
 export function Home(){
   // criamos um estado e usamos o generico do TS <Cycle[]> colocamos array pq a interface recebe uma lista com varios ciclos
   const [cycles,setCycles] = useState<Cycle[]>([])
 
+    // vai armarzenar o tanto de segundos que se passaram desde que o ciclo foi criado ta ativo
+    const [amountSecondsPassed,SetAmountSecondsPassed]= useState(0)
+
   // estado que aplicação vai começar, null porque começa zerado 
   const [activeCycleId, setActiveCycleId]= useState <string | null> (null)
 
-  // vai armarzenar o tanto de segundos que se passaram desde que o ciclo foi criado ta ativo
-  const [amountSecondsPassed,SetAmountSecondsPassed]= useState(0)
-
-  const {register,handleSubmit, watch, reset}= useForm<NewCycleFormData>({
+  const newCycleForm = useForm <NewCycleFormData> ({
     /* chamos o resolver usando o zodResolver e dentro dele colocamos o schemas */
     resolver:zodResolver(newCycleFormValidationSchema),
     defaultValues:{
@@ -64,25 +73,30 @@ export function Home(){
     },
   })
 
+  const { handleSubmit, watch, reset} = newCycleForm
+
   /* aqui a variavel percorre o vetor de ciclos  e vai encontra(usa o find ),  um ciclo em que o id do ciclo seja igual ao id do ciclo ativo */
   const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId) 
 
-  /* ciclo pode estar ativo ou não, quando usuario aperta f5 não fica com nehum ciclo ativo então, se eu tiver um ciclo ativo 
-  activeCycle.minutesAmount * 60      se não  0 */  
-  const totalSeconds = activeCycle ? activeCycle.minutesAmount * 60 : 0
-  
-  //  aqui faz a conta quanto segundos ja passou  se tiver um ciclo ativo  vai ser totalSeconds - amountSecondsPassed se não 0
-  const currentSeconds= activeCycle? totalSeconds - amountSecondsPassed :0 
-
-// aqui faz a divisão usa Math.floor para qrrendor pra baixo para não aprecer numero quebrado
-  const minutesAmount = Math.floor(currentSeconds/60)
-  const secondsAmount = currentSeconds % 60 // % operador de resto 
-
-  const minutes= String(minutesAmount).padStart(2,'0')
-  const seconds= String(secondsAmount).padStart(2,'0')
-
   const task = watch('task')
   const isSubmitDisabled =!task
+
+  function setSecondsPassed(seconds:number){
+    SetAmountSecondsPassed(seconds)
+  }
+
+  function markCurrentCycleAsFinished(){
+    setCycles((state)=>
+      state.map((cycle)=> {
+        if(cycle.id===activeCycleId) {
+          return{...cycle,finishedDate:new Date()}
+        }else{
+          return cycle
+        }
+      }),
+    )
+    
+  }
 
   function handleCreateNewCycle(data:NewCycleFormData){
     /* na variavel passei Cycle que é a interface  deixando o TS  inteligente e mostrando as opcoes que tem para ver pressionar Ctrl mais espaço */
@@ -103,12 +117,12 @@ export function Home(){
     // setando o ciclo recem criado, como sendo meu ciclo ativo, e pegamos o id gerado 
     setActiveCycleId(id)
     SetAmountSecondsPassed(0) // depois que crio volta a zero os segundos passados
-    reset();// funão do useForm que limpa depois do submit, mas se não tiver nada definido em defaultValues
+    reset();// função do useForm que limpa depois do submit, mas se não tiver nada definido em defaultValues
   }
 
   function handleInterruptCycle(){
-    setCycles(cycles.map((cycle) =>{
-      if (cycle.id === activeCycleId){ // aqui atera o ciclo que esta ativo
+    setCycles(state=> state.map((cycle) =>{
+      if (cycle.id === activeCycleId){ // aqui altera o ciclo que esta ativo
         return{...cycle, interruptedDate:new Date()} // retorna cada um dos ciclos alterados
       }else{
         return cycle // ou não alterados
@@ -119,69 +133,24 @@ export function Home(){
   }
 
 
-
-
-  useEffect(()=>{
-    let interval : number
-    if(activeCycle){
-    interval = setInterval(()=>{
-        SetAmountSecondsPassed(differenceInSeconds(new Date(),activeCycle.startDate))
-      },1000)
-    }
-    return ()=>{
-      clearInterval(interval)
-    }
-  },[activeCycle])
-
-  useEffect(()=>{
-    if(activeCycle){
-      document.title = `${minutes}:${seconds}`
-    }
-  },[minutes, seconds ,activeCycle])
-
-
   return (
     <HomeContainer>
-        <form onSubmit={handleSubmit(handleCreateNewCycle)} action="">
-          <FormContainer>
-          <label htmlFor="task">Vou trabalhar em</label>
-        <TaskInput 
-          id="task"
-          list="task-suggestion"
-          placeholder="Dê um nome para o seu projeto"
-          disabled={!!activeCycle} // dois !! porque teria que ser boloeano true o false , ai converte se tiver algum valor pra true se não false
-          {...register('task')} 
-          />
+        <form   onSubmit={handleSubmit(handleCreateNewCycle)}  action="">
+          <CyclesContext.Provider value={{
+            activeCycle,
+            activeCycleId,
+            amountSecondsPassed,
+            markCurrentCycleAsFinished,
+            setSecondsPassed}}>
+            
+            <FormProvider {...newCycleForm} >
+              <NewCycleForm/>
+            </FormProvider>
 
-        <datalist id="task-suggestion">
-          <option value="Projeto 1"/>
-          <option value="Projeto 2"/>
-          <option value="Pato"/>
-        </datalist>
+          <Countdown/>
 
-        <label htmlFor="">Durante</label>
-        <MinutesAmountInput 
-          placeholder="00"
-          type="number"
-          id="minutesAmount"
-          step={5}
-          min={5}
-          max={60}
-          disabled={!!activeCycle}
-          {...register('minutesAmount',{valueAsNumber:true})} /* passa um sengundo paramentro, porque esta indo com string mas queremos numero*/
-          />
-
-        <span>minutos.</span>
-          </FormContainer>
-
-        <CountdownContainer> 
-          <span>{minutes[0]}</span>
-          <span>{minutes[1]}</span>
-          <SeparatorContainer>:</SeparatorContainer>
-          <span> {seconds[0]} </span>
-          <span> {seconds[1]} </span>
-        </CountdownContainer>
-
+          </CyclesContext.Provider>
+          
         {activeCycle ? (
           <StopCountdownButton onClick={handleInterruptCycle} type="button">
           <HandPalm size={24}/>
